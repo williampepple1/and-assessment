@@ -92,17 +92,69 @@ jobs:
             -backend-config="key=${TF_STATE_KEY}" \
             -backend-config="region=${AWS_REGION}"
 
-      - name: Import existing ECR repository if needed
+      - name: Import existing Terraform resources if needed
         working-directory: terraform
         run: |
-          if ! terraform state show aws_ecr_repository.app >/dev/null 2>&1; then
-            if aws ecr describe-repositories --repository-names "${PROJECT_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+          import_if_missing() {
+            local address="$1"
+            local import_id="$2"
+
+            if ! terraform state show "${address}" >/dev/null 2>&1; then
               terraform import \
                 -var="aws_region=${AWS_REGION}" \
                 -var="project_name=${PROJECT_NAME}" \
                 -var="openai_api_key=${{ secrets.OPENAI_API_KEY }}" \
-                aws_ecr_repository.app "${PROJECT_NAME}"
+                "${address}" "${import_id}"
             fi
+          }
+
+          if ! terraform state show aws_ecr_repository.app >/dev/null 2>&1; then
+            if aws ecr describe-repositories --repository-names "${PROJECT_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+              import_if_missing aws_ecr_repository.app "${PROJECT_NAME}"
+            fi
+          fi
+
+          LOG_GROUP_NAME="/aws/apprunner/${PROJECT_NAME}"
+          if aws logs describe-log-groups --log-group-name-prefix "${LOG_GROUP_NAME}" --region "${AWS_REGION}" \
+            --query "logGroups[?logGroupName=='${LOG_GROUP_NAME}'].logGroupName" --output text | grep -q "${LOG_GROUP_NAME}"; then
+            import_if_missing aws_cloudwatch_log_group.app "${LOG_GROUP_NAME}"
+          fi
+
+          SECRET_ARN=$(aws secretsmanager describe-secret \
+            --secret-id "${PROJECT_NAME}/openai-api-key" \
+            --region "${AWS_REGION}" \
+            --query ARN \
+            --output text 2>/dev/null || true)
+          if [ -n "${SECRET_ARN}" ] && [ "${SECRET_ARN}" != "None" ]; then
+            import_if_missing aws_secretsmanager_secret.openai_api_key "${SECRET_ARN}"
+          fi
+
+          ECR_ACCESS_ROLE="${PROJECT_NAME}-ecr-access"
+          if aws iam get-role --role-name "${ECR_ACCESS_ROLE}" >/dev/null 2>&1; then
+            import_if_missing aws_iam_role.apprunner_ecr_access "${ECR_ACCESS_ROLE}"
+            if aws iam list-attached-role-policies --role-name "${ECR_ACCESS_ROLE}" \
+              --query "AttachedPolicies[?PolicyArn=='arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess'].PolicyArn" \
+              --output text | grep -q "AWSAppRunnerServicePolicyForECRAccess"; then
+              import_if_missing aws_iam_role_policy_attachment.apprunner_ecr_access \
+                "${ECR_ACCESS_ROLE}/arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess"
+            fi
+          fi
+
+          INSTANCE_ROLE="${PROJECT_NAME}-instance"
+          INSTANCE_POLICY="${PROJECT_NAME}-read-secrets"
+          if aws iam get-role --role-name "${INSTANCE_ROLE}" >/dev/null 2>&1; then
+            import_if_missing aws_iam_role.apprunner_instance "${INSTANCE_ROLE}"
+            if aws iam get-role-policy --role-name "${INSTANCE_ROLE}" --policy-name "${INSTANCE_POLICY}" >/dev/null 2>&1; then
+              import_if_missing aws_iam_role_policy.apprunner_secrets "${INSTANCE_ROLE}:${INSTANCE_POLICY}"
+            fi
+          fi
+
+          SERVICE_ARN=$(aws apprunner list-services \
+            --region "${AWS_REGION}" \
+            --query "ServiceSummaryList[?ServiceName=='${PROJECT_NAME}'].ServiceArn | [0]" \
+            --output text 2>/dev/null || true)
+          if [ -n "${SERVICE_ARN}" ] && [ "${SERVICE_ARN}" != "None" ]; then
+            import_if_missing aws_apprunner_service.app "${SERVICE_ARN}"
           fi
 
       - name: Ensure ECR repository exists
