@@ -1,0 +1,11 @@
+.git
+.github
+.pytest_cache
+__pycache__
+*.pyc
+.env
+frontend/dist
+frontend/node_modules
+terraform/.terraform
+terraform/*.tfstate
+terraform/*.tfstate.*
