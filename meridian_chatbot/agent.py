@@ -198,6 +198,7 @@ class ChatbotAgent:
             for tool_call in assistant_message.tool_calls:
                 safe_name = tool_call.function.name
                 original_name = safe_to_original.get(safe_name, safe_name)
+                tool_definition = _find_tool(tools, original_name)
 
                 try:
                     arguments = parse_tool_arguments(tool_call.function.arguments)
@@ -215,6 +216,21 @@ class ChatbotAgent:
                         error_category="tool_arguments",
                     )
                 else:
+                    argument_issue = _validate_tool_arguments(tool_definition, arguments)
+                    if argument_issue is not None:
+                        log_event(
+                            "tool_call_completed",
+                            conversation_id=conversation_id,
+                            tool_name=original_name,
+                            success=False,
+                            error_category="tool_arguments",
+                        )
+                        return ChatResponse(
+                            conversation_id=conversation_id,
+                            content=argument_issue,
+                            tool_results=tool_results,
+                        )
+
                     if is_write_tool(original_name):
                         pending = PendingToolCall(
                             name=original_name,
@@ -296,6 +312,50 @@ def _safe_tool_definitions(tools: list[ToolDefinition]) -> list[ToolDefinition]:
 
 def _safe_tool_name(name: str) -> str:
     return name.replace("-", "_").replace(" ", "_")
+
+
+def _find_tool(tools: list[ToolDefinition], name: str) -> ToolDefinition | None:
+    return next((tool for tool in tools if tool.name == name), None)
+
+
+def _validate_tool_arguments(tool: ToolDefinition | None, arguments: dict[str, Any]) -> str | None:
+    if tool is None:
+        return None
+
+    required_fields = tool.input_schema.get("required", [])
+    missing = [field for field in required_fields if field not in arguments or arguments[field] in (None, "", [])]
+    if missing:
+        return _missing_fields_message(tool.name, missing)
+
+    if tool.name == "create_order":
+        customer_id = str(arguments.get("customer_id", ""))
+        items = arguments.get("items")
+        if "@" in customer_id:
+            return (
+                "Before I can create the order, I need to verify the customer and use their customer ID, "
+                "not their email address. Please authenticate the customer first."
+            )
+        if not isinstance(items, list) or not items:
+            return "Before I can create the order, please provide at least one item with SKU, quantity, unit price, and currency."
+
+        required_item_fields = {"sku", "quantity", "unit_price", "currency"}
+        for index, item in enumerate(items, start=1):
+            if not isinstance(item, dict):
+                return f"Item {index} is not valid. Please provide SKU, quantity, unit price, and currency."
+            missing_item_fields = sorted(field for field in required_item_fields if field not in item or item[field] in (None, ""))
+            if missing_item_fields:
+                return f"Item {index} is missing: {', '.join(missing_item_fields)}."
+
+    return None
+
+
+def _missing_fields_message(tool_name: str, missing: list[str]) -> str:
+    if tool_name == "create_order":
+        return (
+            "Before I can create the order, I need the customer ID and an items list. "
+            "Each item should include SKU, quantity, unit price, and currency."
+        )
+    return f"I need the following information before I can continue: {', '.join(missing)}."
 
 
 def _trim_history(history: list[ChatMessage], max_messages: int = 12) -> list[dict[str, str]]:

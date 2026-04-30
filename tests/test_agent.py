@@ -16,7 +16,14 @@ class FakeMCPClient:
             ToolDefinition(
                 name="create_order",
                 description="Create a customer order.",
-                input_schema={"type": "object", "properties": {"sku": {"type": "string"}}},
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "customer_id": {"type": "string"},
+                        "items": {"type": "array"},
+                    },
+                    "required": ["customer_id", "items"],
+                },
             )
         ]
 
@@ -26,13 +33,16 @@ class FakeMCPClient:
 
 
 class FakeLLMClient:
+    def __init__(self, arguments='{"customer_id":"customer-123","items":[{"sku":"MON-1","quantity":1,"unit_price":"199.99","currency":"USD"}]}'):
+        self.arguments = arguments
+
     async def create_response(self, messages, tools):
         message = FakeAssistantMessage(
             content=None,
             tool_calls=[
                 SimpleNamespace(
                     id="call_1",
-                    function=SimpleNamespace(name="create_order", arguments='{"sku":"MON-1"}'),
+                    function=SimpleNamespace(name="create_order", arguments=self.arguments),
                 )
             ],
         )
@@ -78,6 +88,23 @@ async def test_agent_requires_confirmation_before_write_tool():
 
 
 @pytest.mark.asyncio
+async def test_agent_asks_for_missing_create_order_items():
+    mcp_client = FakeMCPClient()
+    agent = ChatbotAgent(
+        Settings(OPENAI_API_KEY="test-key"),
+        mcp_client=mcp_client,
+        llm_client=FakeLLMClient(arguments='{"customer_id":"williamsthomas@example.net"}'),
+    )
+
+    response = await agent.respond("Order one monitor for me", [], conversation_id="test-conversation")
+
+    assert "items list" in response.content.lower()
+    assert "unit price" in response.content.lower()
+    assert mcp_client.called is False
+    assert response.pending_action is None
+
+
+@pytest.mark.asyncio
 async def test_agent_executes_stored_pending_action_only_after_confirmation():
     mcp_client = FakeMCPClient()
     agent = ChatbotAgent(
@@ -87,8 +114,11 @@ async def test_agent_executes_stored_pending_action_only_after_confirmation():
     )
     pending_action = PendingToolCall(
         name="create_order",
-        arguments={"sku": "MON-1"},
-        summary="Tool: create_order\nArguments:\n- sku: MON-1",
+        arguments={
+            "customer_id": "customer-123",
+            "items": [{"sku": "MON-1", "quantity": 1, "unit_price": "199.99", "currency": "USD"}],
+        },
+        summary="Tool: create_order\nArguments:\n- customer_id: customer-123",
     )
 
     response = await agent.respond(

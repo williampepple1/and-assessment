@@ -58,7 +58,12 @@ class MeridianMCPClient:
             )
 
         content = _serialize_tool_content(response.content)
-        return ToolResult(name=name, content=content, is_error=bool(response.isError))
+        is_error = bool(response.isError)
+        return ToolResult(
+            name=name,
+            content=_safe_tool_error(name, content) if is_error else content,
+            is_error=is_error,
+        )
 
     async def _list_tools_once(self) -> Any:
         async with self._session() as session:
@@ -107,3 +112,14 @@ def _serialize_tool_content(content: Any) -> str:
     if len(normalized) == 1 and isinstance(normalized[0], str):
         return normalized[0]
     return json.dumps(normalized, default=str)
+
+
+def _safe_tool_error(name: str, content: str) -> str:
+    if name == "create_order":
+        return (
+            "I could not create the order with the information provided. "
+            "Please confirm the customer account and provide each item with SKU, quantity, unit price, and currency."
+        )
+    if name in {"verify_customer_pin", "get_customer"}:
+        return "I could not verify that customer information. Please check the details and try again."
+    return "The Meridian service could not complete that request. Please check the details and try again."
