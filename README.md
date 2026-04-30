@@ -11,6 +11,17 @@ Production-minded prototype for the AI Engineer Assessment. The app uses a React
 - Docker packages the React build and API into one deployable container.
 - Terraform deploys the container to AWS App Runner with ECR and Secrets Manager.
 
+Live MCP discovery currently exposes these tools:
+
+- `list_products`
+- `get_product`
+- `search_products`
+- `get_customer`
+- `verify_customer_pin`
+- `list_orders`
+- `get_order`
+- `create_order`
+
 ## Local Setup
 
 ```bash
@@ -53,6 +64,8 @@ cd frontend
 npm install
 npm run build
 ```
+
+Known demo customer emails and PINs are documented in `TEST_DATA.md` for authentication and order-history testing.
 
 ## AWS Deployment
 

@@ -40,7 +40,7 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/{path:path}")
+@app.get("/{path:path}", response_model=None)
 async def serve_react_app(path: str) -> FileResponse | dict[str, str]:
     index_file = static_dir / "index.html"
     if index_file.exists():
