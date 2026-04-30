@@ -16,7 +16,13 @@ class Settings(BaseSettings):
     openai_base_url: str | None = Field(default=None, alias="OPENAI_BASE_URL")
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
     request_timeout_seconds: float = Field(default=30.0, alias="REQUEST_TIMEOUT_SECONDS")
+    mcp_timeout_seconds: float = Field(default=15.0, alias="MCP_TIMEOUT_SECONDS")
+    mcp_max_retries: int = Field(default=2, alias="MCP_MAX_RETRIES")
+    mcp_retry_backoff_seconds: float = Field(default=0.5, alias="MCP_RETRY_BACKOFF_SECONDS")
     max_tool_rounds: int = Field(default=4, alias="MAX_TOOL_ROUNDS")
+    max_history_messages: int = Field(default=24, alias="MAX_HISTORY_MESSAGES")
+    rate_limit_messages: int = Field(default=20, alias="RATE_LIMIT_MESSAGES")
+    rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     cors_origins: list[str] = Field(default=["http://localhost:5173"], alias="CORS_ORIGINS")
 

@@ -112,9 +112,15 @@ resource "aws_apprunner_service" "app" {
         port = "8000"
 
         runtime_environment_variables = {
-          MCP_SERVER_URL = var.mcp_server_url
-          LLM_MODEL      = var.llm_model
-          LOG_LEVEL      = "INFO"
+          MCP_SERVER_URL            = var.mcp_server_url
+          LLM_MODEL                 = var.llm_model
+          LOG_LEVEL                 = "INFO"
+          MCP_TIMEOUT_SECONDS       = "15"
+          MCP_MAX_RETRIES           = "2"
+          MCP_RETRY_BACKOFF_SECONDS = "0.5"
+          RATE_LIMIT_MESSAGES       = "20"
+          RATE_LIMIT_WINDOW_SECONDS = "60"
+          MAX_HISTORY_MESSAGES      = "24"
         }
 
         runtime_environment_secrets = {

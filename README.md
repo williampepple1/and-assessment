@@ -97,9 +97,13 @@ The deployment workflow first ensures ECR exists, then builds and pushes the Doc
 ## Important Safety Behavior
 
 - The assistant must use MCP tools for inventory, orders, customer data, and authentication.
-- Write operations such as order creation require explicit customer confirmation.
+- Write operations such as order creation are stored as pending actions and require explicit confirmation of the exact action before execution.
 - Tool arguments are validated and sensitive values are redacted from logs.
 - The frontend never receives LLM provider credentials or direct MCP access.
+- `/api/chat` applies per-IP/conversation rate limits and caps conversation history length to control cost and abuse.
+- `/api/health` checks API status, MCP tool discovery, and LLM configuration.
+- MCP tool calls use bounded timeouts and retries for transient failures.
+- Structured telemetry logs conversation ID, LLM latency, tool latency, tool name, token usage, success/failure, and error category.
 
 ## Key Files
 

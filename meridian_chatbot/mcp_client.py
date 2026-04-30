@@ -1,6 +1,8 @@
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from mcp import ClientSession
@@ -30,8 +32,7 @@ class MeridianMCPClient:
 
     async def list_tools(self) -> list[ToolDefinition]:
         try:
-            async with self._session() as session:
-                response = await session.list_tools()
+            response = await self._with_retries(lambda: self._list_tools_once())
         except Exception as exc:
             logger.exception("Failed to discover MCP tools")
             raise MCPClientError("Unable to connect to Meridian business tools.") from exc
@@ -47,8 +48,7 @@ class MeridianMCPClient:
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> ToolResult:
         try:
-            async with self._session() as session:
-                response = await session.call_tool(name, arguments)
+            response = await self._with_retries(lambda: self._call_tool_once(name, arguments))
         except Exception as exc:
             logger.exception("MCP tool call failed", extra={"tool": name, "arguments": redact(arguments)})
             return ToolResult(
@@ -59,6 +59,31 @@ class MeridianMCPClient:
 
         content = _serialize_tool_content(response.content)
         return ToolResult(name=name, content=content, is_error=bool(response.isError))
+
+    async def _list_tools_once(self) -> Any:
+        async with self._session() as session:
+            return await session.list_tools()
+
+    async def _call_tool_once(self, name: str, arguments: dict[str, Any]) -> Any:
+        async with self._session() as session:
+            return await session.call_tool(name, arguments)
+
+    async def _with_retries(self, operation: Callable[[], Awaitable[Any]]) -> Any:
+        last_error: Exception | None = None
+        attempts = self._settings.mcp_max_retries + 1
+
+        for attempt in range(attempts):
+            try:
+                return await asyncio.wait_for(operation(), timeout=self._settings.mcp_timeout_seconds)
+            except Exception as exc:
+                last_error = exc
+                if attempt == attempts - 1:
+                    break
+                await asyncio.sleep(self._settings.mcp_retry_backoff_seconds * (attempt + 1))
+
+        if last_error is not None:
+            raise last_error
+        raise MCPClientError("MCP operation failed.")
 
 
 def _serialize_tool_content(content: Any) -> str:

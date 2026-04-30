@@ -10,6 +10,7 @@ type ChatMessage = {
 };
 
 type ChatResponse = {
+  conversation_id?: string;
   content: string;
   tool_results?: Array<{
     name: string;
@@ -34,6 +35,7 @@ function App() {
     }
   ]);
   const [input, setInput] = useState("");
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +59,7 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          conversation_id: conversationId,
           message: trimmed,
           history: conversationHistory
         })
@@ -67,6 +70,9 @@ function App() {
       }
 
       const data = (await response.json()) as ChatResponse;
+      if (data.conversation_id) {
+        setConversationId(data.conversation_id);
+      }
       setMessages((current) => [...current, { role: "assistant", content: data.content }]);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Something went wrong.");
